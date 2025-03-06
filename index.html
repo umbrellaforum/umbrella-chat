@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Чат с WebRTC</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        #chat { max-width: 400px; margin: auto; }
+        #messages { height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px; text-align: left; }
+        input, button { width: 100%; margin-top: 10px; padding: 10px; }
+    </style>
+</head>
+<body>
+    <h2>Чат с WebRTC</h2>
+    <div id="chat">
+        <p>Ваш ID: <b id="userId"></b></p>
+        <div id="messages"></div>
+        <input type="text" id="messageInput" placeholder="Введите сообщение">
+        <button onclick="sendMessage()">Отправить</button>
+    </div>
+
+    <script>
+        // Генерация уникального идентификатора
+        const userId = Math.floor(Math.random() * 10000);
+        document.getElementById("userId").innerText = userId;
+
+        const messagesDiv = document.getElementById("messages");
+        const input = document.getElementById("messageInput");
+
+        // Настройка WebRTC
+        let peerConnection;
+        let dataChannel;
+
+        // Функция отправки сообщения
+        function sendMessage() {
+            const message = input.value.trim();
+            if (!message) return;
+
+            addMessage(`Вы (#${userId}): ${message}`);
+            input.value = "";
+
+            if (dataChannel && dataChannel.readyState === "open") {
+                dataChannel.send(message);  // Отправка сообщения через WebRTC
+            }
+        }
+
+        // Функция для отображения сообщений
+        function addMessage(text) {
+            const msgDiv = document.createElement("div");
+            msgDiv.innerText = text;
+            messagesDiv.appendChild(msgDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Создание нового PeerConnection
+        function createPeerConnection() {
+            peerConnection = new RTCPeerConnection();
+
+            // Создание DataChannel для обмена сообщениями
+            dataChannel = peerConnection.createDataChannel("chat");
+
+            // Обработчик получения сообщения
+            dataChannel.onmessage = (event) => {
+                addMessage(`Другой пользователь: ${event.data}`);
+            };
+
+            // Отправка ICE кандидатов на другой peer
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    // Здесь нужно отправить кандидата на другой peer через signaling сервер
+                    console.log("Новый ICE кандидат: ", event.candidate);
+                }
+            };
+        }
+
+        // Функция для установления соединения с другим пользователем
+        function startConnection() {
+            createPeerConnection();
+
+            // Создание offer (запрос на подключение)
+            peerConnection.createOffer()
+                .then((offer) => {
+                    return peerConnection.setLocalDescription(offer);
+                })
+                .then(() => {
+                    // Здесь отправим offer на другой peer через signaling сервер
+                    console.log("Offer отправлен: ", peerConnection.localDescription);
+                })
+                .catch((err) => {
+                    console.error("Ошибка при создании offer:", err);
+                });
+        }
+
+        // Пример функции получения сообщения от другого клиента
+        function handleSignalingData(data) {
+            if (data.offer) {
+                peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+                peerConnection.createAnswer()
+                    .then((answer) => {
+                        return peerConnection.setLocalDescription(answer);
+                    })
+                    .then(() => {
+                        // Отправляем ответ (answer) на другой peer
+                        console.log("Ответ отправлен: ", peerConnection.localDescription);
+                    });
+            }
+
+            if (data.answer) {
+                peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+            }
+
+            if (data.candidate) {
+                peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+            }
+        }
+
+        // Запуск соединения
+        startConnection();
+    </script>
+</body>
+</html>
